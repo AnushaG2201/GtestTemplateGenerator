@@ -56,7 +56,7 @@
         <Parent guid="guidGenerateGtestTemplatePackageCmdSet" id="MyMenuGroup" />
         <Icon guid="guidImages" id="bmpPic1" />
         <Strings>
-          <ButtonText>Invoke GenerateGtestTemplate</ButtonText>
+          <ButtonText>Generate Gtest Template</ButtonText>
         </Strings>
       </Button>
     </Buttons>

@@ -1,13 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="GtestTemplateGenerator.70c62ff0-88c7-4bc9-9859-50bd105ba954" Version="1.0" Language="en-US" Publisher="Anusha" />		
-        <DisplayName>Gtest Template Generator</DisplayName>
+        <Identity Id="TemplateGeneratorGtest.70c62ff0-88c7-4bc9-9859-50bd105ba953" Version="1.1" Language="en-US" Publisher="Anusha" />
+        <DisplayName>Template Generator for Gtest</DisplayName>
         <Description xml:space="preserve">Generate gtest template for unit tests.</Description>
-		<Icon>Resources\Gtest.png</Icon>
-		<PreviewImage>Resources\Gtest.png</PreviewImage>
-		<Tags>c++,gtest,google test,template</Tags>
-	</Metadata>
+        <Icon>Resources\Gtest.png</Icon>
+        <PreviewImage>Resources\Gtest.png</PreviewImage>
+        <Tags>c++,gtest,google test,template</Tags>
+    </Metadata>
     <Installation>
         <InstallationTarget Id="Microsoft.VisualStudio.Enterprise" Version="[16.0, 17.0)" />
         <InstallationTarget Version="[16.0,17.0)" Id="Microsoft.VisualStudio.Community" />

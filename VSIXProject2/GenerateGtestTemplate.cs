@@ -133,6 +133,10 @@ namespace VSIXProject2
             string[] splitMethodNameAndArgs = entireLine.Split('(');
             string[] methodNameWithAccessSpecifiers = splitMethodNameAndArgs[0].Split(' ');
             string methodName = methodNameWithAccessSpecifiers[methodNameWithAccessSpecifiers.Length - 1];
+            if (methodName.Contains("::"))
+            {
+                methodName = methodName.Substring(methodName.IndexOf("::") + 2);
+            }
             int index1 = entireLine.IndexOf('(') + 1;
             int index2 = entireLine.IndexOf(')');
             if (index2 < index1)
@@ -192,7 +196,7 @@ namespace VSIXProject2
             absoluteFilePath = absoluteFilePath + GetSourceFileName(currentlyOpenTabfilePath);
             string fileName = absoluteFilePath.Replace(".cpp", "Test.cpp");
 
-            if (isFirstTimeForTheFile)
+            if (isFirstTimeForTheFile && !File.Exists(fileName))
                 WriteToFile(absoluteFilePath, fileName, generatedTest);
             else
                 AppendToFile(absoluteFilePath, fileName, generatedTest,dte);
@@ -279,10 +283,10 @@ namespace VSIXProject2
                 }
 
                 if (initializer.Length > 0)
-                    stringToReturn = stringToReturn + "\t" + typeAndVariableName[0] + " " + typeAndVariableName[1] + "=" + initializer + ';' + '\n';
+                    stringToReturn = stringToReturn + "\t" + arg + "=" + initializer + ';' + '\n';
 
                 else
-                    stringToReturn = stringToReturn + "\t" + typeAndVariableName[0] + " " + typeAndVariableName[1] + ';' + '\n';
+                    stringToReturn = stringToReturn + "\t" + arg + ';' + '\n';
 
             }
             return stringToReturn;
