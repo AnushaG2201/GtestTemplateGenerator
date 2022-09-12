@@ -59,6 +59,13 @@
           <ButtonText>Generate Gtest Template</ButtonText>
         </Strings>
       </Button>
+	  <Button guid="guidGenerateGtestTemplatePackageCmdSet" id="GenerateMockId" priority="0x0105" type="Button">
+        <Parent guid="guidGenerateGtestTemplatePackageCmdSet" id="MyMenuGroup" />
+        <Icon guid="guidImages" id="bmpPic1" />
+        <Strings>
+          <ButtonText>Generate Mock</ButtonText>
+        </Strings>
+      </Button>
     </Buttons>
 
     <!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
@@ -80,6 +87,7 @@
     <GuidSymbol name="guidGenerateGtestTemplatePackageCmdSet" value="{4604f7c9-dbe1-4db8-a82c-148761b330b2}">
       <IDSymbol name="MyMenuGroup" value="0x1020" />
       <IDSymbol name="GenerateGtestTemplateId" value="0x0100" />
+      <IDSymbol name="GenerateMockId" value="0x0105" />
     </GuidSymbol>
 
     <GuidSymbol name="guidImages" value="{d0c1c5d4-795e-4d27-a677-e4d51128593a}" >

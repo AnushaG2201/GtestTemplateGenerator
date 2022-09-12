@@ -57,6 +57,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Key.snk" />
+    <None Include="Readme.md" />
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>
@@ -78,8 +79,13 @@
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="16.11.35" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="LICENSE.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\GenerateGtestTemplate.png" />
     <Content Include="Resources\GenerateGtestTemplatePackage.ico" />
+    <Content Include="Resources\screenshot.png" />
     <VSCTCompile Include="GenerateGtestTemplatePackage.vsct">
       <ResourceName>Menus.ctmenu</ResourceName>
     </VSCTCompile>

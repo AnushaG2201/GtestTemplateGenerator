@@ -1,9 +1,10 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="TemplateGeneratorGtest.70c62ff0-88c7-4bc9-9859-50bd105ba953" Version="1.1" Language="en-US" Publisher="Anusha" />
+        <Identity Id="TemplateGeneratorGtest.70c62ff0-88c7-4bc9-9859-50bd105ba953" Version="1.5" Language="en-US" Publisher="Anusha" />
         <DisplayName>Template Generator for Gtest</DisplayName>
         <Description xml:space="preserve">Generate gtest template for unit tests.</Description>
+        <License>LICENSE.txt</License>
         <Icon>Resources\Gtest.png</Icon>
         <PreviewImage>Resources\Gtest.png</PreviewImage>
         <Tags>c++,gtest,google test,template</Tags>

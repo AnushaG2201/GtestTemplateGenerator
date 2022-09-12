@@ -16,7 +16,7 @@ using System.Text;
 using System.Linq;
 using Microsoft.VisualStudio.Settings;
 using Microsoft.VisualStudio.Shell.Settings;
-
+using System.Text.RegularExpressions;
 
 namespace VSIXProject2
 {
@@ -29,6 +29,7 @@ namespace VSIXProject2
         /// Command ID.
         /// </summary>
         public const int CommandId = 0x0100;
+        public const int CommandIdMock = 0x0105;
 
         /// <summary>
         /// Command menu group (command set GUID).
@@ -39,6 +40,9 @@ namespace VSIXProject2
         /// VS Package that provides this command, not null.
         /// </summary>
         private readonly AsyncPackage package;
+        WritableSettingsStore userSettingsStore;
+        string text;
+        string[] eachline;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="GenerateGtestTemplate"/> class.
@@ -54,7 +58,11 @@ namespace VSIXProject2
             var menuCommandID = new CommandID(CommandSet, CommandId);
             var menuItem = new MenuCommand(this.Execute, menuCommandID);
             commandService.AddCommand(menuItem);
+            var menuCommandIDMock = new CommandID(CommandSet, CommandIdMock);
+            var menuItemMock = new MenuCommand(this.ExecuteForMock, menuCommandIDMock);
+            commandService.AddCommand(menuItemMock);
         }
+
 
         /// <summary>
         /// Gets the instance of the command.
@@ -88,6 +96,170 @@ namespace VSIXProject2
 
             OleMenuCommandService commandService = await package.GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
             Instance = new GenerateGtestTemplate(package, commandService);
+        }
+
+        private void ExecuteForMock(object sender, EventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var dte = ServiceProvider.GetService(typeof(DTE)) as DTE2;
+            if (dte == null)
+            {
+                ShowMessage("Unknown error occured while loading");
+                return;
+            }
+            var currentlyOpenTabfilePath = dte.ActiveDocument.FullName;
+            if (string.IsNullOrEmpty(currentlyOpenTabfilePath))
+                return;
+
+            string ext = Path.GetExtension(currentlyOpenTabfilePath);
+            if (ext != ".h")
+            {
+                ShowMessage("Select the header file for which you need to create a mock");
+                return;
+            }
+
+            var selection = (TextSelection)dte.ActiveDocument.Selection;
+            var activePoint = selection.ActivePoint;
+            string entireLine = activePoint.CreateEditPoint().GetLines(activePoint.Line, activePoint.Line + 1);
+            if (entireLine == "")
+            {
+                ShowMessage("Select the class name for which you want to create a mock");
+                return;
+            }
+            bool isInterface = false;
+            if (entireLine.Contains("__interface"))
+            {
+                isInterface = true;
+            }
+            string className = "";
+            string IclassName = GetCurrentClassName(GetHeaderFileName(currentlyOpenTabfilePath));
+            char secondLetter = IclassName.ElementAt(1);
+            if (isInterface && IclassName.StartsWith("I") && Char.IsUpper(secondLetter))
+            {
+                className = IclassName.Remove(0, 1);
+            }
+            else
+            {
+                className = IclassName;
+            }
+            string text = File.ReadAllText(currentlyOpenTabfilePath);
+            string[] lines = text.Split('\n');
+            int i = 0;
+            while(!(lines[i].Contains(entireLine)))
+            {
+                i++;               
+            }
+            string l = lines[i+1].Replace("\r\n", "").Replace("\r", "").Replace("\n", "");
+            i += 1;
+            if (l.Length == 1 && l == "{")
+            {
+                i = i + 1;
+            }
+            StringBuilder generatedMock = new StringBuilder();
+            generatedMock.Append("class" + " "+className + "Mock" + ": " + "public" + " " +IclassName+"\n");
+            generatedMock.Append("{\n");
+            generatedMock.Append("public:\n");
+            for (int j = i; j < lines.Length;j++)
+            {
+                string combinedLine = "";
+                if (lines[j].Contains("};"))
+                {
+                    generatedMock.Append("};").Append("\n\n");
+                    break;
+
+                }
+                if (isInterface || lines[j].Contains("virtual"))
+                {
+                    lines[j] = lines[j].Replace("virtual", "");
+                    if (lines[j].Contains("(") && !(lines[j].Contains(")")))
+                    {
+                        while (!(lines[j].Contains(")")))
+                        {
+                            combinedLine += lines[j];
+                            j++;
+                        }
+                        combinedLine += lines[j];
+                        GetMockMethod(ref generatedMock, combinedLine);
+                    }
+                    else if (lines[j].Contains(")"))
+                    {
+                        GetMockMethod(ref generatedMock, lines[j]);
+                    }
+                }
+               
+            }
+            OpenFileDialog openFileDialog = new OpenFileDialog();
+            openFileDialog.InitialDirectory = GetCurrentDirectory(currentlyOpenTabfilePath);
+            openFileDialog.Filter = "Source files|*.cpp|Header files|*.h";
+            string fileName = "";
+            if(openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                fileName = openFileDialog.FileName;
+            }
+            if (fileName != "")
+            {
+                text = File.ReadAllText(fileName);
+                if (text.Length == 0)
+                {
+                    string headers = GetHeaders(currentlyOpenTabfilePath);
+                    generatedMock = generatedMock.Insert(0, headers);
+                    WriteToFile(fileName, generatedMock.ToString());
+                }
+                else
+                {
+                    dte.ExecuteCommand("File.OpenFile", fileName);
+                    dte.ExecuteCommand("File.Close", string.Empty);
+                    int position = GetPositionToAppend(text);
+                    if (position < text.Length)
+                    {
+                        generatedMock.Append(text.Substring(position));
+                        generatedMock.Append("\n");
+                        AppendToFile(fileName, generatedMock.ToString(), position);
+                    }
+                    else
+                    {
+                        string generatedMockString = generatedMock.ToString();
+                        int pos = getGeneratedTemplateToAppend(fileName, ref generatedMockString);
+                        AppendToFile(fileName, generatedMockString, pos);
+                    }
+                }
+                dte.ExecuteCommand("File.OpenFile", fileName);
+                dte.ExecuteCommand("Edit.FormatDocument", string.Empty);
+            }
+            else
+            {
+                ShowMessage("Enter a path in which to create the mock file!");
+            }
+        }
+
+        private static void GetMockMethod(ref StringBuilder generatedMock, string line)
+        {
+            string ReturnTypeAndMethodName = line.Substring(0, line.IndexOf('('));
+            ReturnTypeAndMethodName = ReturnTypeAndMethodName.Trim();
+            int lengthOfArgs = (line.IndexOf(')') - line.IndexOf('(')) + 1;
+            string Args = line.Substring(line.IndexOf('('), lengthOfArgs);
+            string[] ReturnTypeAndMethodNameSplit = ReturnTypeAndMethodName.Split(' ');
+            generatedMock.Append("MOCK_METHOD" + "(" + ReturnTypeAndMethodNameSplit[0] + "," + ReturnTypeAndMethodNameSplit[ReturnTypeAndMethodNameSplit.Length - 1] + "," + Args + "," + "(override)" + ")" + ";");
+            generatedMock.Append("\n");
+        }
+
+        private int GetPositionToAppend(string text)
+        {
+            int position = 0;
+            string[] lines = text.Split('\n');
+            for(int i=0; i<lines.Length;i++)
+            {
+                if (lines[i].Contains("TYPED_TEST_SUITE"))
+                {
+                    position -= ((lines[i - 1].Length)+1);
+                    break;
+                }
+                else
+                {
+                    position += lines[i].Length + 1;
+                }
+            }
+            return position;
         }
 
         /// <summary>
@@ -145,15 +317,10 @@ namespace VSIXProject2
                 return;
             }
             string args = getArgs(entireLine.Substring(index1, index2 - index1));
-            string generatedTest =
-                "TYPED_TEST" + "(" + GetTestClassName(GetHeaderFileName(currentlyOpenTabfilePath)) + "," + "Should" + methodName + ")" +
-                "{" + "\n"
-                + args + GetAssertString() +
-                "}";
 
             string absoluteFilePath = "";
             SettingsManager settingsManager = new ShellSettingsManager(ServiceProvider);
-            WritableSettingsStore userSettingsStore = settingsManager.GetWritableSettingsStore(SettingsScope.UserSettings);
+            userSettingsStore = settingsManager.GetWritableSettingsStore(SettingsScope.UserSettings);
 
             bool isFirstTimeForTheFile = false;
             CompareInfo Compare = CultureInfo.InvariantCulture.CompareInfo;
@@ -169,6 +336,7 @@ namespace VSIXProject2
             {
                 absoluteFilePath = "";
                 FolderBrowserDialog fbd = new FolderBrowserDialog();
+                fbd.SelectedPath = GetCurrentDirectory(currentlyOpenTabfilePath);
                 if (fbd.ShowDialog() == DialogResult.OK)
                 {
                     absoluteFilePath = fbd.SelectedPath + "\\";
@@ -190,19 +358,112 @@ namespace VSIXProject2
             }
             if (absoluteFilePath == "")
             {
-                absoluteFilePath = GetCurrentDirectory(currentlyOpenTabfilePath);
+                ShowMessage("Enter a path in which to create the test file!");
             }
 
             absoluteFilePath = absoluteFilePath + GetSourceFileName(currentlyOpenTabfilePath);
             string fileName = absoluteFilePath.Replace(".cpp", "Test.cpp");
 
+            string generatedTest =
+               "TYPED_TEST" + "(" + GetTypeName(fileName, isFirstTimeForTheFile && File.Exists(fileName), currentlyOpenTabfilePath) + "," + "Should" + methodName + ")" +
+               "{" + "\n"
+               + args + GetAssertString() +
+               "}";
             if (isFirstTimeForTheFile && !File.Exists(fileName))
-                WriteToFile(absoluteFilePath, fileName, generatedTest);
+            {
+                getTemplateForTestToWrite(absoluteFilePath, ref generatedTest);
+                WriteToFile(fileName, generatedTest);
+            }
             else
-                AppendToFile(absoluteFilePath, fileName, generatedTest,dte);
+            {
+                generatedTest = "\n" + generatedTest;
+                generatedTest += "\n";
+                int position = getGeneratedTemplateToAppend(fileName, ref generatedTest);
+                dte.ExecuteCommand("File.OpenFile", fileName);
+                dte.ExecuteCommand("File.Close", string.Empty);
+                AppendToFile(fileName, generatedTest, position);
+            }
 
             dte.ExecuteCommand("File.OpenFile", fileName);
             dte.ExecuteCommand("Edit.FormatDocument", string.Empty);
+            //dte.ExecuteCommand("File.SaveAll", string.Empty);
+            //dte.ExecuteCommand("File.Close", string.Empty);
+            //dte.ExecuteCommand("File.OpenFile", fileName);
+        }
+
+        private int getGeneratedTemplateToAppend(string fileName, ref string generatedTest)
+        {
+            int count = 0;
+            text = File.ReadAllText(fileName);
+            eachline = text.Split('\n');
+            foreach (string line in eachline)
+            {
+                string lineTrimmed = line.Trim();
+                if (lineTrimmed.StartsWith("namespace"))
+                {
+                    count++;
+                    generatedTest += "}" + "\n";
+                }
+                if (line.Contains("class") || line.Contains("TYPED_TEST") || line.Contains("TEST_F") || line.Contains("TEST"))
+                {
+                    break;
+                }
+            }
+            int val = 0;
+            int position = text.Length - 1;
+            while (val < count)
+            {
+                if (text.ElementAt(position) == '}')
+                {
+                    val++;
+                }
+                position--;
+            }
+
+            return position;
+        }
+
+        private void getTemplateForTestToWrite(string absoluteFilePath, ref string generatedTest)
+        {
+            generatedTest = GetHeaders(absoluteFilePath) + "\n" + AddNamespace() + "\n" + DefineTypes(absoluteFilePath) + "\n" + GetClassInitialization(absoluteFilePath) + "{" + GetConstructorAndDestructor(absoluteFilePath) + "};" + "\n" + "\n"+ generatedTest + "\n" + "}" + "\n" +"}"+"\n";
+        }
+
+        private string GetTypeName(string fileName, bool shouldGetTypeFromFile, string currentlyOpenTabfilePath)
+        {
+            try
+            {
+                if (shouldGetTypeFromFile)
+                {
+                    text = File.ReadAllText(fileName);
+                    eachline = text.Split('\n');
+                    string typeLine = "";
+                    foreach (string line in eachline)
+                    {
+                        if (line.Contains("TYPED_TEST_SUITE("))
+                        {
+                            typeLine = line;
+                        }
+                    }
+                    int index1 = typeLine.IndexOf("TYPED_TEST_SUITE(") + "TYPED_TEST_SUITE(".Length;
+                    int length = typeLine.IndexOf(',') - index1;
+                    string TypeName = typeLine.Substring(index1, length);
+                    userSettingsStore.CreateCollection("Gtest template\\TypeName");
+                    userSettingsStore.SetString("Gtest template", fileName, TypeName);
+                    return TypeName;
+                }
+                else if (File.Exists(fileName))
+                {
+                    return userSettingsStore.GetString("Gtest template", fileName);
+                }
+                else
+                {
+                    return GetTestClassName(GetHeaderFileName(currentlyOpenTabfilePath));
+                }
+            }
+            catch(Exception e)
+            {
+                return GetTestClassName(GetHeaderFileName(currentlyOpenTabfilePath));
+            }
         }
 
         private void ShowMessage(string text)
@@ -220,13 +481,13 @@ namespace VSIXProject2
                 OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
         }
 
-        private void WriteToFile(string absoluteFilePath, string fileName, string generatedTest)
+        private void WriteToFile(string fileName, string generatedTemplate)
         {
-            generatedTest = GetHeaders(absoluteFilePath) + "\n" + AddNamespace() + "\n" +"\n"+ DefineTypes(absoluteFilePath) + "\n"+ "\n"+ GetClassInitialization(absoluteFilePath) + "{" + GetConstructorAndDestructor(absoluteFilePath) + "};" + "\n" + generatedTest + "\n" + "}" + "\n";
+            
             using (Stream stream = new FileStream(fileName, FileMode.OpenOrCreate))
             {
                 stream.Seek(0, SeekOrigin.Begin);
-                stream.Write(Encoding.ASCII.GetBytes(generatedTest), 0, generatedTest.Length);
+                stream.Write(Encoding.ASCII.GetBytes(generatedTemplate), 0, generatedTemplate.Length);
             }
         }
 
@@ -235,22 +496,20 @@ namespace VSIXProject2
             string stringToReturn = "";
             string className = GetTestClassName(GetHeaderFileName(currentlyOpenTabfilePath)) ;
             stringToReturn += "using"+className+"Types = ::testing::Types<bool>;" +"\n"
-            + "TYPED_TEST_SUITE("+className+className+"Types);";
+            + "TYPED_TEST_SUITE("+className+","+className+"Types);"+"\n";
             return stringToReturn;
         }
 
-        private void AppendToFile(string absoluteFilePath, string fileName, string generatedTest, DTE2 dte)
+        private void AppendToFile(string fileName, string generatedTemplate, int position)
         {
-            generatedTest = "\n" + generatedTest;
-            generatedTest += "\n"+"}";
-            string text = File.ReadAllText(fileName);
-            //var lineCount = File.ReadLines(fileName).Count();
+            
+            
             using (Stream stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
             {
-                int len = text.Length;
-                stream.Seek(text.Length-2, SeekOrigin.Begin);
-                stream.Write(Encoding.ASCII.GetBytes(generatedTest), 0, generatedTest.Length);
-            }
+                stream.Seek(position, SeekOrigin.Begin);
+                stream.Write(Encoding.ASCII.GetBytes(generatedTemplate), 0, generatedTemplate.Length);
+            }              
+           
             //dte.ExecuteCommand("File.OpenFile", fileName);
             //dte.ExecuteCommand("Edit.FormatDocument", string.Empty);
         }
@@ -259,7 +518,8 @@ namespace VSIXProject2
         {
             string[] varList = v.Split(',');
             string stringToReturn = "";
-
+            if (v == "")
+                return stringToReturn;
             foreach (string arg in varList)
             {
                 //string trimmedArg = arg.Trim();
@@ -323,6 +583,10 @@ namespace VSIXProject2
         {
             return className.Replace(".h", "") + "Test";
         }
+        private string GetCurrentClassName(string className)
+        {
+            return className.Replace(".h", "");
+        }
 
         private string GetConstructorAndDestructor(string currentlyOpenTabfilePath)
         {
@@ -342,8 +606,9 @@ namespace VSIXProject2
             stringToReturn += "#include " + "\"pch.h\"" + "\n";
             stringToReturn += "#include " + "\"iostream\"" + "\n";            
             stringToReturn += "#include " + "\"gtest/gtest.h\"" + "\n";
-            stringToReturn += "#include " + "\"gmock/gmock.h\"" + "\n" + "\n";
-            stringToReturn += "#include " + "\"" + className + "\"" + "\n";
+            stringToReturn += "#include " + "\"gmock/gmock.h\"" + "\n";
+            stringToReturn += "#include " + "\"gmock/gmock-generated-function-mockers.h\"" + "\n";
+            stringToReturn += "#include " + "\"" + className + "\"" + "\n"+"\n";
             return stringToReturn;
         }
 
@@ -359,9 +624,34 @@ namespace VSIXProject2
 
         private string AddNamespace()
         {
-            return "namespace unittest {";
-        }
+            string stringToReturn = "namespace unittest {";
+            stringToReturn += "namespace UnitTesters {" +
+             "using testing::_;\n" +
+            "using testing::A;\n" +
+            "using testing::An;" +
+            "using testing::AnyNumber;\n" +
+            "using testing::Const;\n" +
+            "using testing::DoDefault;\n" +
+            "using testing::Eq;\n" +
+            "using testing::Lt;\n" +
+            "using testing::MockFunction;\n" +
+            "using testing::Ref;\n" +
+            "using testing::Return;\n" +
+            "using testing::ReturnRef;\n" +
+            "using testing::TypedEq;\n" +
+            "\n" +
+            "template < typename T >\n" +
 
+        "class TemplatedCopyable\n" +
+        "{\n" +
+            "public:\n" +
+            "TemplatedCopyable() { }\n" +
+            "\n" +
+            "template<typename U>\n" +
+            "TemplatedCopyable(const U& other) {} \n" +
+        "};\n";
+            return stringToReturn;
+        }
 
     }
 }
